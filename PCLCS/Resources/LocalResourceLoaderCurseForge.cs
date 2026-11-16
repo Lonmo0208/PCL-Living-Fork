@@ -74,6 +74,10 @@ public sealed partial class LocalResourceLoaderEngine<TLocal, TProject, TVersion
         JToken files = host.Request("https://api.curseforge.com/v1/mods/files", HttpMethod.Post,
             "{\"fileIds\": [" + string.Join(",", updateFileIds.Keys) + "]}", "application/json")["data"]!;
         Dictionary<TLocal, TVersion> updates = new();
+        // 双加载器实例（NeoForge + Fabric）分开保留每个加载器的最新候选，最后按
+        // “NeoForge 优先、Fabric 版本号更高才用 Fabric”挑选；单加载器实例保持原来的按日期取最新。
+        bool dualLoader = HasBothNeoAndFabric(targetLoaders);
+        Dictionary<TLocal, TVersion> neoForgeCandidates = new(), fabricCandidates = new();
         foreach (JToken json in files) {
             TVersion file = host.ReadVersion((JObject)json, ResourceTypes.Mod);
             if (!file.DownloadAvailable) continue;
@@ -82,8 +86,19 @@ public sealed partial class LocalResourceLoaderEngine<TLocal, TProject, TVersion
                 if (!SupportsUpdateLoader(file.ModLoaders,targetLoaders,loaders[entry])) {
                     host.WarnQuiet($"从 CurseForge 获取到的更新文件 {file.FileName} 加载器为 {file.ModLoaders}，与本地文件 {entry.File.Name} 的加载器 {loaders[entry]} 不一致，已忽略"); continue;
                 }
+                if (dualLoader) {
+                    if (file.ModLoaders.HasFlagF(ModLoaders.NeoForge)) KeepNewestCandidate(neoForgeCandidates, entry, file);
+                    else if (file.ModLoaders.HasFlagF(ModLoaders.Fabric)) KeepNewestCandidate(fabricCandidates, entry, file);
+                    continue;
+                }
                 if (updates.ContainsKey(entry) && updates[entry].ReleaseDate >= file.ReleaseDate) continue;
                 updates[entry] = file;
+            }
+        }
+        if (dualLoader) {
+            foreach (TLocal entry in mods) {
+                TVersion? chosen = ChooseDualLoaderUpdate(neoForgeCandidates.GetValueOrDefault(entry), fabricCandidates.GetValueOrDefault(entry));
+                if (chosen is not null) updates[entry] = chosen;
             }
         }
         foreach (var pair in updates) {

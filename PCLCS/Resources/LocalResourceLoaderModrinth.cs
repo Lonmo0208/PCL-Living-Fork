@@ -50,18 +50,43 @@ public sealed partial class LocalResourceLoaderEngine<TLocal, TProject, TVersion
         host.Info("已从 Modrinth 获取本地 Mod 信息，继续获取更新信息");
         var toUpdate = mapping.SelectMany(l => l.Value).ToList();
         if (!toUpdate.Any()) return;
-        string updateData = string.Join(",", toUpdate.Select(m => "{\"hash\": \"" + m.ModrinthHash + "\", \"loaders\": [\"" + string.Join("\",\"", loaders[m]) + "\"], \"game_versions\": [\"" + vanillaVersion + "\"]}"));
+        // 双加载器实例（NeoForge + Fabric）要分别问 NeoForge 与 Fabric 的最新版本，再按
+        // “NeoForge 优先、Fabric 版本号更高才用 Fabric”的规则挑选——Modrinth 的单次查询只会
+        // 返回两个加载器里发布时间最晚的那一个，版本号高低它不管。
+        bool dualLoader = HasBothNeoAndFabric(targetLoaders);
+        string UpdateBody(IEnumerable<TLocal> entries, Func<TLocal, IEnumerable<string>> loaderPicker) =>
+            "{\"algorithm\": \"sha1\", \"hashes\": [" + string.Join(",", entries.Select(m =>
+                "{\"hash\": \"" + m.ModrinthHash + "\", \"loaders\": [\"" + string.Join("\",\"", loaderPicker(m)) + "\"], \"game_versions\": [\"" + vanillaVersion + "\"]}")) + "]}";
         JObject updates = (JObject)host.Request("https://api.modrinth.com/v2/version_files/update_individual", HttpMethod.Post,
-            "{\"algorithm\": \"sha1\", \"hashes\": [" + updateData + "]}", "application/json");
+            UpdateBody(toUpdate, m => dualLoader && loaders[m].Any(loader => loader != "fabric") ? loaders[m].Where(loader => loader != "fabric") : loaders[m]), "application/json");
+        JObject? fabricUpdates = dualLoader
+            ? (JObject)host.Request("https://api.modrinth.com/v2/version_files/update_individual", HttpMethod.Post,
+                UpdateBody(toUpdate, _ => new[] { "fabric" }), "application/json")
+            : null;
+        // 单个候选的校验，返回版本号与工程 ID（更新日志链接要用）。
+        (TVersion Version, string ProjectId)? Candidate(JObject source, TLocal entry, TVersion current) {
+            if (!source.ContainsKey(entry.ModrinthHash)) return null;
+            JObject raw = (JObject)source[entry.ModrinthHash]!;
+            if (raw["game_versions"]?.Any(version => version.ToString() == vanillaVersion) != true) return null;
+            TVersion candidate = host.ReadVersion(raw, ResourceTypes.Mod);
+            if (!candidate.DownloadAvailable) return null;
+            if (!SupportsUpdateLoader(candidate.ModLoaders, targetLoaders, current.ModLoaders)) return null;
+            return (candidate, raw["project_id"]?.ToString() ?? "");
+        }
         foreach (TLocal entry in mods) {
-            if (!updates.ContainsKey(entry.ModrinthHash) || !installed.TryGetValue(entry,out TVersion? current)) continue;
-            if (updates[entry.ModrinthHash]!["game_versions"]?.Any(version=>version.ToString()==vanillaVersion)!=true) continue;
-            TVersion update = host.ReadVersion((JObject)updates[entry.ModrinthHash]!, ResourceTypes.Mod);
-            if (!update.DownloadAvailable) continue;
-            if (!SupportsUpdateLoader(update.ModLoaders,targetLoaders,current.ModLoaders)) continue;
+            if (!installed.TryGetValue(entry, out TVersion? current)) continue;
+            (TVersion Version, string ProjectId)? preferred = Candidate(updates, entry, current);
+            (TVersion Version, string ProjectId)? selected = preferred;
+            if (fabricUpdates is not null) {
+                (TVersion Version, string ProjectId)? fabric = Candidate(fabricUpdates, entry, current);
+                TVersion? chosen = ChooseDualLoaderUpdate(preferred?.Version, fabric?.Version);
+                selected = chosen is null ? null : chosen == fabric?.Version ? fabric : preferred;
+            }
+            if (selected is null) continue;
+            TVersion update = selected.Value.Version;
             host.Trace(() => $"本地文件 {current.FileName} 在 Modrinth 上的最新版为 {update.FileName}");
             if (current.ReleaseDate >= update.ReleaseDate || (current.Hash ?? "") == (update.Hash ?? "")) continue;
-            string changelog = $"https://modrinth.com/mod/{updates[entry.ModrinthHash]!["project_id"]}/changelog?g={vanillaVersion}";
+            string changelog = $"https://modrinth.com/mod/{selected.Value.ProjectId}/changelog?g={vanillaVersion}";
             if (entry.UpdateFile is not null && (update.Hash ?? "") == (entry.UpdateFile.Hash ?? "")) {
                 entry.ChangelogUrls.Add(changelog);
                 update.DownloadUrls!.AddRange(entry.UpdateFile.DownloadUrls!);

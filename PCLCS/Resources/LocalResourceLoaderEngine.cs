@@ -143,4 +143,40 @@ public sealed partial class LocalResourceLoaderEngine<TLocal, TProject, TVersion
         ModLoaders expected=UpdateLoaders(target,installed);
         return expected==ModLoaders.None ? candidate==ModLoaders.None : (candidate & expected)!=0;
     }
+    /// <summary>
+    /// 双加载器实例（NeoForge + Fabric，例如 NeoFobric）的更新选择：默认取 NeoForge 候选，只有 Fabric
+    /// 候选的版本号更高时才改用 Fabric；任一方缺失时直接使用另一方。版本号相同按 NeoForge 处理。
+    /// </summary>
+    private static bool HasBothNeoAndFabric(ModLoaders loaders) =>
+        (loaders & (ModLoaders.NeoForge | ModLoaders.Fabric)) == (ModLoaders.NeoForge | ModLoaders.Fabric);
+    private static TVersion? ChooseDualLoaderUpdate(TVersion? neoForgeCandidate, TVersion? fabricCandidate) {
+        if (neoForgeCandidate is null) return fabricCandidate;
+        if (fabricCandidate is null) return neoForgeCandidate;
+        string? neoForgeVersion = ComparableVersion(neoForgeCandidate);
+        string? fabricVersion = ComparableVersion(fabricCandidate);
+        // 任一方拿不到版本号就无法比较，按“优先 NeoForge”处理。
+        if (neoForgeVersion is null || fabricVersion is null) return neoForgeCandidate;
+        return McUtils.CompareVersion(fabricVersion, neoForgeVersion) > 0 ? fabricCandidate : neoForgeCandidate;
+    }
+    /// <summary>候选的版本号：Modrinth 自带 version_number；CurseForge 文件没有该字段，从显示名/文件名里取。</summary>
+    private static string? ComparableVersion(ResourceVersionModelData version) {
+        if (!string.IsNullOrWhiteSpace(version.Version) && version.Version != "未知版本") return version.Version;
+        string? text = version.Display ?? version.FileName;
+        if (string.IsNullOrEmpty(text)) return null;
+        // CurseForge 的显示名默认就是文件显示名（如 "journeymap-1.21.1-6.0.0-fabric"）：取最后一个
+        // 数字点号串，并跳过与游戏版本完全相同的片段。取不到就返回 null（调用方按 NeoForge 优先）。
+        var matches = System.Text.RegularExpressions.Regex.Matches(text, @"(?<![0-9A-Za-z.])v?([0-9]+(?:\.[0-9]+)+[A-Za-z0-9.+-]*)");
+        for (int i = matches.Count - 1; i >= 0; i--) {
+            string candidate = matches[i].Groups[1].Value.TrimEnd('.', '-', '+');
+            if (candidate.Length == 0) continue;
+            if (version.GameVersions is not null && version.GameVersions.Contains(candidate)) continue;
+            return candidate;
+        }
+        return null;
+    }
+    /// <summary>保留每个加载器各自的“最新”候选：按发布时间更晚者胜出。</summary>
+    private static void KeepNewestCandidate<TKey>(Dictionary<TKey, TVersion> candidates, TKey key, TVersion file) where TKey : notnull {
+        if (candidates.TryGetValue(key, out TVersion? existing) && existing.ReleaseDate >= file.ReleaseDate) return;
+        candidates[key] = file;
+    }
 }
