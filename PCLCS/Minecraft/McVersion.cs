@@ -137,10 +137,15 @@ public sealed class McVersion {
             ModLoaderVersions[ModLoaders.LiteLoader] = jsonText.RegexSeek(@"(?<=com\.mumfrey:liteloader:)[^\"":/]+") ?? "未知版本";
         }
         // Fabric、Forge、NeoForge
+        // Fabric 必须独立判定：双加载器版本（NeoForge 平台里带一份真实 fabric-loader，例如 NeoFobric
+        // 或裸装 fabric-loader 的 NeoForge 实例）的 JSON 同时含 net.fabricmc:fabric-loader 与
+        // net.neoforged，旧的 else-if 链在识别到 Fabric 后就把 NeoForge 跳过了，实例只显示 Fabric。
         if (jsonText.ContainsIgnoreCase("net.fabricmc:fabric-loader") || jsonText.ContainsIgnoreCase("org.quiltmc:quilt-loader")) {
             ModLoaderVersions[ModLoaders.Fabric] = jsonText.RegexSeek(@"(?<=(net\.fabricmc:fabric-loader:|org\.quiltmc:quilt-loader:))[0-9\.]+(\+build.[0-9]+)?")?
                                                         .Replace("+build", "") ?? "未知版本";
-        } else if (jsonText.ContainsIgnoreCase("net.neoforge")) {
+        }
+        // Forge 与 NeoForge 仍然互斥，NeoForge 优先（NeoForge 的 JSON 里也带 FML 的 Forge 痕迹）。
+        if (jsonText.ContainsIgnoreCase("net.neoforge")) {
             // 1.20.1 JSON 范例："--fml.forgeVersion", "47.1.99"
             // 1.20.2+ JSON 范例："--fml.neoForgeVersion", "20.6.119-beta"
             ModLoaderVersions[ModLoaders.NeoForge] = FindArgumentValue(json, "--fml.neoForgeVersion") ?? FindArgumentValue(json, "--fml.forgeVersion") ?? "未知版本";

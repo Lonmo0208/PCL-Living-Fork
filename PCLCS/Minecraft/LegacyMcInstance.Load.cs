@@ -66,7 +66,9 @@ public partial class LegacyMcInstance<TSelf, TState, TCard>
                         else if (Version.IsSnapshot) StateCode = 2;
                         if (Version.HasOptiFine) StateCode = 4;
                         if (Version.ModLoaders.HasFlagF(ModLoaders.LiteLoader)) StateCode = 8;
-                        if (Version.ModLoaders.HasFlagF(ModLoaders.Fabric)) StateCode = 9;
+                        // 双加载器版本（NeoForge 里带一份真实 fabric-loader）：实例归 NeoForge——它才是
+                        // 实际启动的平台，Fabric 是搭在它里面的第二加载器；副标题仍会同时列出两者。
+                        if (Version.ModLoaders.HasFlagF(ModLoaders.Fabric) && !Version.ModLoaders.HasFlagF(ModLoaders.NeoForge)) StateCode = 9;
                         else if (Version.ModLoaders.HasFlagF(ModLoaders.Forge)) StateCode = 6;
                         else if (Version.ModLoaders.HasFlagF(ModLoaders.NeoForge)) StateCode = 7;
                         break;

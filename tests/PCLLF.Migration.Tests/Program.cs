@@ -44,6 +44,7 @@ internal static class Program {
             ("settings", () => LegacySettingsTests.Cases().Concat(SettingsMicrosoftIsolationTests.Cases()).Concat(UpdateLogPromptTests.Cases())),
             ("mod-favorites", ResourceFavoriteTests.Cases),
             ("validation-loaders", LegacyValidationLoaderTests.Cases),
+            ("loader-detection", McVersionLoaderTests.Cases),
             ("legacy-java", LegacyJavaTests.Cases),
             ("foundation", LegacyFoundationTests.Cases)
         ];
