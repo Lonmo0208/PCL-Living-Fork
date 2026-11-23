@@ -156,7 +156,7 @@ namespace PCL
 
         private static Dictionary<string, Action<object>> EntryCallbacks()
         {
-            return new Dictionary<string, Action<object>>() { { "SystemDebugMode", (_) => Logger.Instance.MinLevel = ModBase.ModeDebug ? LogLevel.Trace : LogLevel.Info }, { "LivingModpackMode", ModModpackMode.OnChanged }, { "LaunchSkinID", (_) => PageLaunchLeft.SkinLegacy.Start() }, { "LaunchSkinType", (_) => PageSetupLaunch.UpdateSkinType() }, { "LaunchRecentWorlds", QuickPlayWorlds.OnEnabledChanged }, { "LaunchModDependencyCheck", (_) => LaunchDependencyCheck.SettingsChanged() }, { "LaunchModDependencyAutoFill", (_) => LaunchDependencyCheck.SettingsChanged() }, { "LaunchRamType", (_) => PageSetupLaunch.UpdateRamType() }, { "ToolDownloadSpeed", Value => ModNet.UpdateNetTaskSpeedLimitHigh(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "ToolDownloadCert", Value => ModNet.ShouldValidateSslCertificateOnLogin(Microsoft.VisualBasic.CompilerServices.Conversions.ToBoolean(Value)) }, { "UiLauncherTransparent", Value => { int ConvertedValue = Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value); if (ModMain.FrmMain is not null) ModMain.FrmMain.Opacity = ConvertedValue / 1000d + 0.4d; } }, { "UiLauncherColorMode", _ => ModSecret.ThemeRefresh() }, { "UiPanelOpacity", _ => ModTheme.RefreshPanelOpacity() }, { "UiLauncherTheme", Value => ModSecret.ThemeRefresh(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "UiBackgroundMode", (_) => PageSetupUI.BackgroundRefresh(false, true) }, { "UiBackgroundColorful", (_) => ModSecret.ThemeRefresh() }, { "UiBackgroundOpacity", FormMain.UpdateBackgroundAndTitleBar }, { "UiBackgroundBlur", FormMain.UpdateBackgroundAndTitleBar }, { "UiBackgroundSuit", FormMain.UpdateBackgroundAndTitleBar }, { "UiCustomType", (_) => PageSetupUI.OnMainPageTypeChanged() }, { "UiLogoType", FormMain.UpdateBackgroundAndTitleBar }, { "UiLogoText", FormMain.UpdateBackgroundAndTitleBar }, { "UiLogoLeft", FormMain.UpdateBackgroundAndTitleBar }, { "UiHiddenPageDownload", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageLink", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageSetup", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageOther", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionSelect", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionModUpdate", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionInstanceModify", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionHidden", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupLaunch", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupUi", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupLink", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupSystem", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherHelp", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherFeedback", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherVote", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherAbout", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherTest", (_) => PageSetupUI.HiddenRefresh() }, { "VersionRamType", Value => PageInstanceSetup.OnVersionRamTypeChanged(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "VersionServerLogin", Value => PageInstanceSetup.OnVersionServerLoginChanged(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) } };
+            return new Dictionary<string, Action<object>>() { { "SystemDebugMode", (_) => Logger.Instance.MinLevel = ModBase.ModeDebug ? LogLevel.Trace : LogLevel.Info }, { "LivingModpackMode", ModModpackMode.OnChanged }, { "LaunchSkinID", (_) => PageLaunchLeft.SkinLegacy.Start() }, { "LaunchSkinType", (_) => PageSetupLaunch.UpdateSkinType() }, { "LaunchRecentWorlds", QuickPlayWorlds.OnEnabledChanged }, { "LaunchModDependencyCheck", (_) => LaunchDependencyCheck.SettingsChanged() }, { "LaunchModDependencyAutoFill", (_) => LaunchDependencyCheck.SettingsChanged() }, { "LaunchRamType", (_) => PageSetupLaunch.UpdateRamType() }, { "ToolDownloadSpeed", Value => ModNet.UpdateNetTaskSpeedLimitHigh(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "ToolDownloadCert", Value => ModNet.ShouldValidateSslCertificateOnLogin(Microsoft.VisualBasic.CompilerServices.Conversions.ToBoolean(Value)) }, { "UiLauncherTransparent", FormMain.ApplyConfiguredOpacity }, { "UiLauncherColorMode", _ => ModSecret.ThemeRefresh() }, { "UiPanelOpacity", _ => ModTheme.RefreshPanelOpacity() }, { "UiLauncherTheme", Value => ModSecret.ThemeRefresh(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "UiBackgroundMode", (_) => PageSetupUI.BackgroundRefresh(false, true) }, { "UiBackgroundColorful", (_) => ModSecret.ThemeRefresh() }, { "UiBackgroundOpacity", FormMain.UpdateBackgroundAndTitleBar }, { "UiBackgroundBlur", FormMain.UpdateBackgroundAndTitleBar }, { "UiBackgroundSuit", FormMain.UpdateBackgroundAndTitleBar }, { "UiCustomType", (_) => PageSetupUI.OnMainPageTypeChanged() }, { "UiLogoType", FormMain.UpdateBackgroundAndTitleBar }, { "UiLogoText", FormMain.UpdateBackgroundAndTitleBar }, { "UiLogoLeft", FormMain.UpdateBackgroundAndTitleBar }, { "UiHiddenPageDownload", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageLink", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageSetup", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenPageOther", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionSelect", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionModUpdate", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionInstanceModify", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenFunctionHidden", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupLaunch", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupUi", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupLink", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenSetupSystem", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherHelp", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherFeedback", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherVote", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherAbout", (_) => PageSetupUI.HiddenRefresh() }, { "UiHiddenOtherTest", (_) => PageSetupUI.HiddenRefresh() }, { "VersionRamType", Value => PageInstanceSetup.OnVersionRamTypeChanged(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) }, { "VersionServerLogin", Value => PageInstanceSetup.OnVersionServerLoginChanged(Microsoft.VisualBasic.CompilerServices.Conversions.ToInteger(Value)) } };
         }
 
         private static object EntryHostDefault(string Key)
@@ -224,7 +224,7 @@ namespace PCL
 
         public static void Set(string Key, object Value, ModMinecraft.McInstance Instance = null)
         {
-            Backend.Set(Key, Value, Instance);
+            if (RetiredLoginDefault(Key) is null) Backend.Set(Key, Value, Instance);
         }
         public static void SetInstanceUserPreference(string Key, object Value, ModMinecraft.McInstance Instance = null)
         {
@@ -240,11 +240,22 @@ namespace PCL
         }
         public static void SetSafe(string Key, object Value, ModMinecraft.McInstance Instance = null)
         {
-            Backend.SetSafe(Key, Value, Instance);
+            if (RetiredLoginDefault(Key) is null) Backend.SetSafe(Key, Value, Instance);
         }
+
+        // These values remain in the schema for existing profiles. Current launch and
+        // account pages use the global account selection regardless of their stored values.
+        private static object RetiredLoginDefault(string key) => key switch
+        {
+            "VersionServerLogin" or "LoginPageType" => 0,
+            "VersionServerNide" or "VersionServerAuthServer" or "VersionServerAuthName" or "VersionServerAuthRegister" => "",
+            _ => null
+        };
+
         public static object Get(string Key, ModMinecraft.McInstance Instance = null)
         {
-            return Backend.Get(Key, Instance);
+            if (GlassClientUiPolicy.IgnoresHiddenSetting(Key)) return false;
+            return RetiredLoginDefault(Key) ?? Backend.Get(Key, Instance);
         }
         private static object GetCore(string Key, ModMinecraft.McInstance Instance, Func<Setting, string> ReadRaw = null, string DeviceIdentify = null)
         {
@@ -256,7 +267,8 @@ namespace PCL
         }
         public static object GetSafe(string Key, ModMinecraft.McInstance Instance = null)
         {
-            return Backend.GetSafe(Key, Instance);
+            if (GlassClientUiPolicy.IgnoresHiddenSetting(Key)) return false;
+            return RetiredLoginDefault(Key) ?? Backend.GetSafe(Key, Instance);
         }
         public static void Reset(string Key, ModMinecraft.McInstance Instance = null)
         {

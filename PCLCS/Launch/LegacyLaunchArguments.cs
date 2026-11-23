@@ -36,8 +36,11 @@ public void McLaunchJava(LegacyLaunchTask<int, int> Task)
     }
 
 
-public void McLaunchArgumentMain(LegacyLaunchTask<string, int> Loader)
+    private int? launchRamMiB;
+
+    public void McLaunchArgumentMain(LegacyLaunchTask<string, int> Loader)
     {
+        launchRamMiB = null;
         // 获取基础参数
         var Arguments = new List<string>();
         McLaunchLog("参数获取开始");
@@ -153,7 +156,10 @@ public List<string> McLaunchArgumentsJVM()
         {
             if (McLaunchJavaSelected.Version.Major >= 6)
                 Args.Add("-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"); // 信任系统根证书（5252#）
-            string Server = Setting<string>("VersionServerAuthServer", Instance: McInstanceSelected);
+            if (McLoginLoader.Input is not ILegacyLaunchServerData { BaseUrl: { } endpoint } ||
+                !endpoint.EndsWith(AuthlibEndpoint.AuthPath, StringComparison.Ordinal) || !AuthlibEndpoint.TryParse(endpoint, out _))
+                throw new InvalidOperationException("缺少此次登录的 Authlib-Injector 认证地址，请重新登录后启动。");
+            string Server = endpoint[..^AuthlibEndpoint.AuthPath.Length];
             try
             {
                 McLaunchLog($"开始 Authlib Injector Prefetch");
@@ -213,6 +219,7 @@ public List<string> McLaunchArgumentsJVM()
 
         McLaunchLog("当前剩余内存：" + Math.Round(host.AvailablePhysicalMemory() / 1024d / 1024d / 1024d * 10d) / 10 + "G");
         int TargetRam = Conversions.ToInteger(Math.Floor(host.RamGb(McInstanceSelected) * 1024d));
+        launchRamMiB = TargetRam;
         Args.Add("-Xmx" + TargetRam + "m");
 
         // 获取设置的管理方式
@@ -426,7 +433,7 @@ public List<string> McLaunchArgumentsGame()
 
         // 自动进入服务器
         string Server = CurrentLaunchOptions.QuickPlayWorld is not null ? "" : string.IsNullOrEmpty(CurrentLaunchOptions.ServerIp) ? Setting<string>("VersionServerEnter", McInstanceSelected) : CurrentLaunchOptions.ServerIp;
-        if (Server.Any())
+        if (!string.IsNullOrEmpty(Server))
         {
             if (McInstanceSelected.ReleaseTime > new DateTime(2023, 4, 4))
             {
@@ -434,28 +441,16 @@ public List<string> McLaunchArgumentsGame()
                 Args.Add($"--quickPlayMultiplayer");
                 Args.Add(Server);
             }
-            else
+            else if (LegacyServerAddress.TryParse(Server, out string hostName, out int port))
             {
-                // 老版本
-                if (Server.Contains(":"))
-                {
-                    // 包含端口号
-                    Args.Add("--server");
-                    Args.Add(Server.Split(":")[0]);
-                    Args.Add("--port");
-                    Args.Add(Server.Split(":")[1]);
-                }
-                else
-                {
-                    // 不包含端口号
-                    Args.Add("--server");
-                    Args.Add(Server);
-                    Args.Add("--port");
-                    Args.Add("25565");
-                }
+                Args.Add("--server");
+                Args.Add(hostName);
+                Args.Add("--port");
+                Args.Add(port.ToString(CultureInfo.InvariantCulture));
                 if (McInstanceSelected.Version.HasOptiFine)
                     Hint("OptiFine 与自动进入服务器可能不兼容，有概率导致材质丢失甚至游戏崩溃！", LegacyLaunchHint.Red);
             }
+            else Hint("自动进入服务器的地址无效，已跳过自动进服。", LegacyLaunchHint.Red);
         }
 
         CurrentLaunchOptions.QuickPlay = host.PrepareQuickPlay(McInstanceSelected, CurrentLaunchOptions.QuickPlayWorld, Args, CurrentLaunchOptions.SaveBatch is not null);

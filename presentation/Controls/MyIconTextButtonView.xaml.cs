@@ -19,6 +19,11 @@ public partial class MyIconTextButtonView : Border {
     public event CheckEventHandler Change { add => change += value; remove => change -= value; }
     public event EventHandler<ControlPreviewEventArgs>? Click;
     protected virtual void OnClick() => Click?.Invoke(this, new(true));
+    public void PerformClick() {
+        if (!IsEnabled) return;
+        Services.Info("按下带图标按钮：" + Text);
+        OnClick(); Services.RaiseCustomEvent(this);
+    }
     private static ControlServiceHost Services => ControlServices.Current;
     private static ControlAnimations Animations => Services.Animations;
     public MyIconTextButtonView() {
@@ -53,11 +58,11 @@ public partial class MyIconTextButtonView : Border {
                     SetForeground("ColorBrush3", 100); Animations.Start(Animations.ColorResource(this, BackgroundProperty, "ColorBrushBg1", new(100)), "MyIconTextButton Color " + Uuid);
                 } else {
                     SetForeground(IsEnabled ? ColorType == ColorState.Black ? "ColorBrush1" : "ColorBrush3" : "ColorBrushGray5", IsEnabled ? 150 : 100);
-                    Animations.Start(Animations.ColorTo(this, BackgroundProperty, Services.ThemeColor(ControlThemeColor.SemiTransparent), new(150)), "MyIconTextButton Color " + Uuid);
+                    Animations.Start(Animations.ColorResource(this, BackgroundProperty, "ColorBrushSemiTransparent", new(150)), "MyIconTextButton Color " + Uuid);
                 }
             } else {
                 Animations.Stop("MyIconTextButton Checked " + Uuid); Animations.Stop("MyIconTextButton Color " + Uuid);
-                Background = Services.ThemeColor(ControlThemeColor.SemiTransparent).ToBrush();
+                SetResourceReference(BackgroundProperty, "ColorBrushSemiTransparent");
                 string color = IsEnabled ? ColorType == ColorState.Black ? "ColorBrush1" : "ColorBrush3" : "ColorBrushGray5";
                 ShapeLogo.SetResourceReference(Path.FillProperty, color); LabText.SetResourceReference(TextBlock.ForegroundProperty, color);
             }

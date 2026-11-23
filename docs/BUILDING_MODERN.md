@@ -4,6 +4,10 @@
 
 来源与许可见 [NOTICE.md](../NOTICE.md) 和 [SOURCE_PROVENANCE.md](../modern/Main/SOURCE_PROVENANCE.md)。迁移期任务账本与审计报告保存在 Git 历史中，已不作为当前开发计划。
 
+业务 Core 与 Windows/WPF 适配层已分为独立程序集，依赖方向、现存宿主约束和新 UI 接入要求见 [架构边界](ARCHITECTURE.md)。
+
+当前默认工作台与经典对照的运行、内部壁纸材质和定向验证见 [WPF 工作台界面](GLASS_UI.md)。
+
 ## Windows 工具链与依赖
 
 使用 Windows x64、.NET 10 SDK，以及支持 .NET 10/WPF 的 IDE。初始化固定 Shared 子模块：
@@ -41,6 +45,17 @@ dotnet run --project tests/PCLLF.Migration.Tests/PCLLF.Migration.Tests.csproj --
 
 真实 WPF 组件与 Native facade 验收在 Windows 执行，入口分别见 [组件测试工程](../tests/PCLLF.Modern.Wpf.Tests/PCLLF.Modern.Wpf.Tests.csproj)和 [Native facade 说明](../tests/PCLLF.Native.Facade.Tests/README.md)。源码、组件测试、冷启动、真实账号和 Minecraft 启动结果分别报告。
 
+只构建业务库时不需要 WPF 工具链：
+
+```powershell
+dotnet build modern/Core/PCLLF.Core.csproj --configuration Debug -nr:false
+dotnet run --project tests/PCLLF.Migration.Tests/PCLLF.Migration.Tests.csproj --configuration Debug -- --group foundation
+```
+
+纯业务测试通过 `ProjectReference` 引用产品使用的 Core DLL，不再链接生产源码另编一份。`foundation` 组同时核对程序集边界、资源归属和 ZIP 流读取契约。Core 的框架目标为 `net10.0`；其中仍有 Windows 注册表和路径兼容接口，无 WPF 依赖不表示所有 API 都可跨平台运行。
+
+应用服务的状态归属和接入边界见 [架构说明](ARCHITECTURE.md#应用服务与状态归属)。定向验证使用 `foundation` 与 `validation-loaders` 业务组，以及 Windows Main 的 `application-services` 组；账号链另行选择 `account-ui`。本地 facade 运行前设置 `$env:PCL_NATIVE_REPOSITORY_ROOT = $PWD.Path`，不要伪造 CI 环境。
+
 ## Release 发布包
 
 普通 Debug、Release 和精简构建默认显示 `dev_edition`。`ModBase.ReleaseBaselineVersion` 用于更新比较，开发构建不会被同基线或更旧发布覆盖；更新通道仍决定是否接收预发布版。只有显式传入 `-OfficialRelease`／`LFOfficialRelease=true` 才使用正式发布身份。
@@ -67,11 +82,15 @@ pwsh -NoProfile -File scripts/Build-Release.ps1 -Slim -OfficialRelease -Configur
 
 ## 主分支 CI 门禁
 
-`main` 的代码、项目、构建脚本、工作流或未知路径变更执行完整产品、迁移及 WPF 验证。纯文档变更按选择器的明确白名单识别，跳过产品构建、游戏/窗口运行、迁移测试及 WPF 矩阵，只执行轻量文档校验并返回必需检查状态；不使用 workflow 的 `paths-ignore`，避免 PR 卡在等待检查。
+`main` 的代码、项目、构建脚本、工作流或未知路径变更执行产品合并检查、迁移及 WPF 验证。产品检查编译 Debug 和 Release 主程序。Release 还验证资源、凭据、更新桥、真实启动与正常关闭后重开，在独立 Windows runner 实测旧版升级，并运行启动、账号、工作台、更新、实例和资源的核心回归。纯文档变更按选择器的明确白名单执行轻量校验，并返回必需检查状态。
 
-文档与代码混合修改仍走完整验证。`docs/` 下的脚本和 JSON 数据、产品图片、运行时资源及代理指令文件不属于文档白名单。重命名检查同时考虑旧路径和新路径。手动运行和 `--full` 保持完整检查；事件、比较基线或路径无法可靠取得时回退完整验证。
+文档与代码混合修改仍走合并检查。`docs/` 下的脚本和 JSON 数据、产品图片、运行时资源及代理指令文件不属于文档白名单。重命名检查同时考虑旧路径和新路径。事件、比较基线或路径无法可靠取得时，选择器启用产品、迁移及 WPF 验证。
 
 `Native product gate`、`Migration validation gate`、`Modern WPF gate` 核对真实选择结果：选中的验证必须成功，失败、取消和意外跳过不能通过。CNB 检查只处理离线合成数据，不触发公开发布。
+
+需要全量 Windows 回归时，在 Actions 手动运行 **Build**。手动构建还检查 Debug 打包和 facade、Release 连续界面操作、历史构建工具、可选 LegacyLink 编译及精简打包。针对单项功能，也可以在 Windows 本地运行对应分组。 [Native facade 命令与环境要求](../tests/PCLLF.Native.Facade.Tests/README.md)
+
+打包脚本、校验器、相关工作流及版本构建配置有变更时，合并检查会验证精简 EXE 和 ZIP。公开预发布附件在 `main` 的发布构建中生成。
 
 本地验证选择器和门禁（Python 需有 PyYAML 6.0.2）：
 
@@ -90,12 +109,14 @@ CI 规则本身的修改不享受纯文档快速路径。实际产品、旧版�
 | 路径 | 职责 |
 | --- | --- |
 | `modern/Main` | WPF 入口、页面、原生控件适配与模块调用面 |
-| `PCLCS` | 业务规则、文件事务与平台实现 |
-| `PCLCS/Platform/Windows` | 按业务域划分的 Windows 控制器、契约与服务 |
+| `modern/Core/PCLLF.Core.csproj` | 编译 `PCLCS` 中的业务源码，目标 `net10.0`，兼容程序集名 `PCLCS` |
+| `PCLLF.WPF.Core/PCLLF.WPF.Core.csproj` | 编译 `PCLLF.WPF.Core` 中的控制器、契约与服务，目标 `net10.0-windows`，程序集名 `PCLLF.WPF.Core` |
 | `presentation` | WPF 控件、页面、对话框与窗口表现层 |
 | `modern/BuildEvents` | 原 WithEvents 事件绑定的生成与校验 |
 | `modern/BuildResources` | 必要数据/原生资源及 WPF pack 资源清单 |
 
 托管依赖通过正常依赖图或单文件 bundle 提供，不在主程序集资源中重复嵌入。Native 资源保留 `Custom`、`ForgeInstaller`、`Help`、`libwebp64`、`Transformer` 五个必要数据/原生负载。框架依赖的单文件包保留完整资源和身份校验，不使用会破坏 WPF 的裁剪来缩小体积。
+
+Core 的四个原嵌入资源继续保存在 `PCLCS.dll`，大小写、反斜线资源名和读取行为保持一致。`PCLLF.WPF.Core.dll` 由项目引用自动进入构建及发布输出；维护按 DLL 加载的诊断工具时需要同时提供它。历史 `PCLCS/PCLCS.csproj` 是旧 net48 工程，不属于当前产品 solution。
 
 版本说明使用原生 WPF Markdown 视图。Markdig 和其他第三方组件的许可保留在关于页与仓库第三方目录。

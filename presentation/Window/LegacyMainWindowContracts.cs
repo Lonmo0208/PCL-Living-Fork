@@ -49,6 +49,9 @@ public sealed class LegacyMainDragHelperPort {
 }
 /// <summary>Lazy getters retain the real BAML field identities before and after InitializeComponent.</summary>
 public sealed class LegacyMainWindowView {
+    public Func<bool>? UsesGlassShell;
+    /// <summary>True while a shell page covers the launch page (the Enter-to-launch shortcut is then suppressed).</summary>
+    public Func<bool>? SuppressesLaunchKey;
     public Window Window = null!;
     public Func<Grid> PanBack = null!, PanForm = null!, PanMain = null!, PanTitle = null!, PanTitleMain = null!, PanTitleInner = null!, PanMsg = null!;
     public Func<Border> BorderForm = null!, PanMainLeft = null!, PanMainRight = null!;
@@ -152,6 +155,7 @@ public sealed class LegacyMainWindowHost<TStack, TInstance, TAnimation>
     public Func<TInstance, bool> InstanceLocked = null!;
     public Func<TInstance?, bool> InstanceBlocksNavigation = null!;
     public Action<string, object?, TInstance> WriteInstanceSetting = null!;
+    public bool UsesGlobalAccounts;
     public Func<string, string?> ValidateHttp = null!;
     public Action ReloadInstanceSetup = null!, RefreshLaunchPage = null!, RefreshCustomHome = null!;
     public Func<List<string>, bool> InstallMods = null!;

@@ -53,7 +53,9 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
     private readonly LegacyWatcherHost<TWatcher, TInstance, TLoader, TState> host;
     private readonly LegacyWatcherGroup<TWatcher, TInstance, TLoader, TState> group;
     private string? windowTitle = "";
-    private int pid, stopCallbackCompleted, logProgress;
+    private bool dynamicWindowTitle;
+    private StringBuilder? windowTitleBuffer;
+    private int pid, gameExitVerified, stopCallbackCompleted, logProgress;
     private Action? afterStopped;
     private Func<string, string>? logRedactor;
     private int? windowTypeOverride;
@@ -68,37 +70,69 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
     private bool entryReachedGame, restartRequested, waitingForRelaunch;
     private int deferredCancellation;
     private string? environmentPoint;
-    private bool reachedRunning, isWindowAppeared, isWindowFinished;
+    private bool reachedRunning, isWindowAppeared, isWindowFinished, reportedLoaderWindow;
+    private const int FastWindowProbeMs = 48;
+    private const int BackoffWindowProbeMs = 96;
+    private const int FastWindowProbeDurationMs = 12000;
+    private const int SettledWatchIntervalMs = 192;
     private IntPtr windowHandle;
     private readonly object waitingLogLock = new();
+    private readonly object stateGate = new();
+    private List<string> spareLogBuffer = new();
     private TState state;
     public LegacyWatcher(TWatcher owner, LegacyWatcherHost<TWatcher, TInstance, TLoader, TState> host,
         LegacyWatcherGroup<TWatcher, TInstance, TLoader, TState> group) { this.owner = owner; this.host = host; this.group = group; state = host.Loading; }
     private bool Is(TState value, TState expected) => group.Is(value, expected);
+    public bool IsGameActive => Volatile.Read(ref gameExitVerified) == 0 && group.ProcessAlive(owner);
     private bool LegacyRelaunchPending() =>
         legacyJavaGroup is not null && ReferenceEquals(entryProcess, owner.CoreGameProcess) &&
         entryProcess.HasExited && entryProcess.ExitCode == 0 && (!entryReachedGame || restartRequested) &&
         legacyJavaGroup.HasActiveJava();
 
-    private bool AllProcessesAndPipesFinished() {
+    private bool GameProcessesExited() {
         if (!entryProcess.HasExited || !owner.CoreGameProcess.HasExited ||
-            !(hasGroupExited?.Invoke() ?? true) || !(arePipesDrained?.Invoke() ?? true)) return false;
+            !(hasGroupExited?.Invoke() ?? true)) return false;
         return Volatile.Read(ref deferredCancellation) != 0
             ? legacyJavaGroup?.HasActiveJava() != true
             : !LegacyRelaunchPending();
     }
 
+    private bool AllProcessesAndPipesFinished() => GameProcessesExited() && (arePipesDrained?.Invoke() ?? true);
+
+    private void ReportVerifiedGameExit() {
+        if (Interlocked.Exchange(ref gameExitVerified, 1) != 0) return;
+        try { host.VerifiedGameExit?.Invoke(); }
+        catch (Exception error) { Logger.Warn(error, "通知游戏退出状态失败"); }
+    }
+
     public TState State {
-        get => state;
+        get { lock (stateGate) return state; }
         set {
             if ((requireVerifiedExit || legacyJavaGroup is not null) && (Is(value, host.Ended) || Is(value, host.Canceled)) &&
                 owner.CoreGameProcess is Process && !AllProcessesAndPipesFinished()) {
                 if (Is(value, host.Canceled)) Volatile.Write(ref deferredCancellation, 1);
                 return;
             }
-            if (Is(state, value)) return; state = value; if (Is(value, host.Running)) reachedRunning = true; group.StateChanged();
+            lock (stateGate) {
+                if (Is(state, value)) return;
+                state = value;
+                if (Is(value, host.Running)) reachedRunning = true;
+                Monitor.PulseAll(stateGate);
+            }
+            group.StateChanged();
         }
     }
+
+    public TState WaitForStartupState(int timeoutMilliseconds) {
+        lock (stateGate) {
+            if (Is(state, host.Loading)) Monitor.Wait(stateGate, timeoutMilliseconds);
+            return state;
+        }
+    }
+
+    private bool CanPublishStartup() => Is(State, host.Loading) && Volatile.Read(ref deferredCancellation) == 0 &&
+        !host.LoaderCanceled(owner.CoreLoader) && !owner.CoreGameProcess.HasExited;
+
     public void Initialize(TLoader Loader, TInstance Instance, string? WindowTitle, Action<Process>? BeforeMonitoring = null, Action? OnStopped = null, string? EnvironmentPoint = null, Func<string, string>? LogRedactor = null, int? WindowTypeOverride = null, Action? OnMonitoringFinished = null, bool RequireVerifiedExit = false, Action<Action<string?>, Action<string?>>? AttachPipeOutput = null, Func<bool>? ArePipesDrained = null, Action? CustomTerminate = null, Func<bool>? HasGroupExited = null) {
         logRedactor = LogRedactor;
         windowTypeOverride = WindowTypeOverride;
@@ -109,6 +143,8 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
         hasGroupExited = HasGroupExited;
         requireVerifiedExit = RequireVerifiedExit;
         owner.CoreLoader = Loader; owner.CoreInstance = Instance; windowTitle = WindowTitle;
+        dynamicWindowTitle = WindowTitle?.Contains("{date}", StringComparison.Ordinal) == true ||
+            WindowTitle?.Contains("{time}", StringComparison.Ordinal) == true;
         entryProcess = owner.CoreGameProcess = host.LoaderInput(Loader);
         pid = entryProcess.Id;
         if (!RequireVerifiedExit) legacyJavaGroup = LegacyJavaProcessGroup.TryAttach(entryProcess);
@@ -138,17 +174,19 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
             try {
                 // A closing log or kill request is not process completion. Keep
                 // observing until the owned process group and output pipes have exited.
+                var startup = Stopwatch.StartNew();
                 while (true) {
-                    TimerWindow(); TimerLog();
+                    // Consume cancellation and crash lines first, then publish a window
+                    // from the current process instead of waiting for its next stdout line.
+                    TimerLog();
                     if (AllProcessesAndPipesFinished() && Volatile.Read(ref stopCallbackCompleted) != 0) break;
-                    for (int i = 1; i <= 3; i++) {
-                        if (isWindowFinished && isWindowAppeared && !string.IsNullOrEmpty(windowTitle) && Is(State, host.Running) &&
-                            !owner.CoreGameProcess.HasExited && host.GetWindowProcessId(windowHandle) == owner.CoreGameProcess.Id) {
-                            string title = windowTitle!.Replace("{date}", DateTime.Now.ToString("yyyy'/'M'/'d")).Replace("{time}", DateTime.Now.ToString("HH':'mm':'ss"));
-                            host.SetWindowText(windowHandle, new string(title.ToCharArray()));
-                        }
-                        Thread.Sleep(64);
+                    TimerWindow();
+                    if (!isWindowFinished && (Is(State, host.Loading) || Is(State, host.Running))) {
+                        Thread.Sleep(startup.ElapsedMilliseconds < FastWindowProbeDurationMs ? FastWindowProbeMs : BackoffWindowProbeMs);
+                        continue;
                     }
+                    UpdateWindowTitle();
+                    Thread.Sleep(SettledWatchIntervalMs);
                 }
                 group.StateChanged();
                 WatcherLog("Minecraft 日志监控已退出");
@@ -165,6 +203,24 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
             }
         }, "Minecraft Watcher PID " + pid);
     }
+
+    private void UpdateWindowTitle() {
+        if (!isWindowFinished || !isWindowAppeared || string.IsNullOrEmpty(windowTitle) || !Is(State, host.Running)) return;
+        Process process = owner.CoreGameProcess;
+        if (process.HasExited || host.GetWindowProcessId(windowHandle) != process.Id) return;
+
+        string title = windowTitle;
+        if (dynamicWindowTitle) {
+            DateTime now = DateTime.Now;
+            title = title.Replace("{date}", now.ToString("yyyy'/'M'/'d")).Replace("{time}", now.ToString("HH':'mm':'ss"));
+        }
+        StringBuilder currentTitle = windowTitleBuffer ??= new StringBuilder(512);
+        currentTitle.Clear();
+        currentTitle.EnsureCapacity(title.Length + 2);
+        host.GetWindowText(windowHandle, currentTitle, currentTitle.Capacity);
+        if (!currentTitle.Equals(title.AsSpan())) host.SetWindowText(windowHandle, title);
+    }
+
     private void LogReceived(object sender, DataReceivedEventArgs e) => LogLine(e.Data);
     private void LogLine(string? text) {
         if (text is null) return;
@@ -175,12 +231,14 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
     private bool CompleteStopCallbacks() {
         if (!AllProcessesAndPipesFinished()) return false;
         if (Interlocked.Exchange(ref stopCallbackCompleted, 1) != 0) return false;
+        ReportVerifiedGameExit();
         // Freeze the outcome before backup callbacks or concurrent kill UI, and finish
         // callbacks before changing the terminal state can close the launcher.
         bool normal = IsNormalExit();
         WatcherLog("Minecraft 已退出，返回值：" + owner.CoreGameProcess.ExitCode);
         // Backup and settings sessions were recorded against the original launch.
         // Use the successor's exit result, but close the original session record.
+        if (LegacyJavaLaunchIdentity.ForProcess(entryProcess) is { } identity) identity.WatcherCompleted = true;
         try { host.ProcessStopped(owner.CoreInstance, entryProcess, normal); }
         catch (Exception error) { Logger.Warn(error, "游戏退出后的存档自动备份失败"); }
         try { host.MarkHealthy(host.InstancePath(owner.CoreInstance), environmentPoint, normal); }
@@ -195,14 +253,25 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
                 Volatile.Write(ref deferredCancellation, 1);
             if (legacyJavaGroup is not null && Volatile.Read(ref deferredCancellation) != 0 && legacyJavaGroup.HasActiveJava())
                 legacyJavaGroup.TerminateJava();
-            bool readyToSettle = AllProcessesAndPipesFinished();
-            List<string> copied = new();
+            List<string>? copied = null;
             lock (waitingLogLock) {
-                copied = owner.CoreWaitingLog; owner.CoreWaitingLog = new List<string>(1000);
+                if (owner.CoreWaitingLog.Count != 0) {
+                    copied = owner.CoreWaitingLog;
+                    owner.CoreWaitingLog = spareLogBuffer;
+                    spareLogBuffer = copied;
+                }
             }
-            foreach (string text in copied) GameLog(text);
-            if (copied.Count > 0 && Is(State, host.Loading)) ProgressUpdate();
-            if (readyToSettle && CompleteStopCallbacks()) {
+            if (copied is not null) {
+                try {
+                    foreach (string text in copied) GameLog(text);
+                    if (CanPublishStartup()) ProgressUpdate();
+                }
+                finally { copied.Clear(); }
+            }
+            // Publish process exit after consuming relaunch messages. Finalization still waits for the log pipes.
+            bool processesExited = GameProcessesExited();
+            if (processesExited) ReportVerifiedGameExit();
+            if (processesExited && CompleteStopCallbacks()) {
                 try {
                     if (Volatile.Read(ref deferredCancellation) != 0) State = host.Canceled;
                     else if (Is(State, host.Loading)) { WatcherLog("Minecraft 尚未加载完成，可能已崩溃", LogLevel.Error); Crashed(); }
@@ -253,57 +322,73 @@ public sealed class LegacyWatcher<TWatcher, TInstance, TLoader, TState>
                     WatcherLog("启动入口已正常退出，正在等待同次启动的 Java 游戏窗口");
                 }
             } else if (isWindowFinished) return;
-            (IntPtr Handle, string Title, string ClassName, Process? Successor)? window = null;
+            (IntPtr Handle, string Title, Process? Successor)? window = null;
             try { window = TryGetMinecraftWindow(); }
             catch (Win32Exception error) { Logger.Error(error, "由于反作弊或安全软件拦截，PCL 无法操作游戏窗口", LogBehavior.Toast); isWindowFinished = true; }
             if (window is null) return;
-            var (handle, name, className, successor) = window.Value;
-            if (!name.StartsWithF("FML") && !name.StartsWithF("Quilt Loader")) {
-                if (successor is not null) {
-                    owner.CoreGameProcess = successor;
-                    WatcherLog($"已接续监控同一启动会话中的 Java 进程（PID {successor.Id}）");
-                } else if (className != "SunAwtFrame" || name.ContainsIgnoreCase("Minecraft")) {
-                    entryReachedGame = true;
-                }
-                windowHandle = handle; WatcherLog($"Minecraft 窗口已加载：{name}（{handle.ToInt64()}）"); isWindowFinished = true;
-                Process windowProcess = owner.CoreGameProcess;
-                if ((windowTypeOverride ?? host.WindowType()) == 4) host.RunInNewThread(() => {
-                    try {
-                        Thread.Sleep(2000);
-                        if (!windowProcess.HasExited && host.GetWindowProcessId(handle) == windowProcess.Id) {
-                            host.ShowWindow(handle, 3);
-                            WatcherLog($"已最大化 Minecraft 窗口：{handle.ToInt64()}");
-                        }
+            var (handle, name, successor) = window.Value;
+            if (successor is not null) {
+                owner.CoreGameProcess = successor;
+                WatcherLog($"已接续监控同一启动会话中的 Java 进程（PID {successor.Id}）");
+            } else entryReachedGame = true;
+
+            windowHandle = handle;
+            WatcherLog($"Minecraft 窗口已加载：{name}（{handle.ToInt64()}）");
+            isWindowFinished = isWindowAppeared = true;
+            waitingForRelaunch = false;
+            if (CanPublishStartup()) ProgressUpdate();
+
+            Process windowProcess = owner.CoreGameProcess;
+            if ((windowTypeOverride ?? host.WindowType()) == 4) host.RunInNewThread(() => {
+                try {
+                    Thread.Sleep(2000);
+                    if (!windowProcess.HasExited && host.GetWindowProcessId(handle) == windowProcess.Id) {
+                        host.ShowWindow(handle, 3);
+                        WatcherLog($"已最大化 Minecraft 窗口：{handle.ToInt64()}");
                     }
-                    catch (Exception error) { Logger.Warn(error, "最大化 Minecraft 窗口时出现错误"); }
-                }, "MinecraftWindowMaximize");
-            } else {
-                successor?.Dispose();
-                if (!isWindowAppeared) WatcherLog("Mod Loader 窗口已加载：" + name + "（" + handle.ToInt64() + "）");
-            }
-            isWindowAppeared = true;
-            if (successor is not null && isWindowFinished && Is(State, host.Loading)) ProgressUpdate();
+                }
+                catch (Exception error) { Logger.Warn(error, "最大化 Minecraft 窗口时出现错误"); }
+            }, "MinecraftWindowMaximize");
         } catch (Exception error) { Logger.Error(error, "检查 Minecraft 窗口失败"); }
     }
-    private (IntPtr Handle, string Title, string ClassName, Process? Successor)? TryGetMinecraftWindow() {
-        (IntPtr Handle, string Title, string ClassName, Process? Successor)? result = null;
+    private (IntPtr Handle, string Title, Process? Successor)? TryGetMinecraftWindow() {
+        (IntPtr Handle, string Title, Process? Successor)? result = null;
+        Process current = owner.CoreGameProcess;
+        bool mayFollow = legacyJavaGroup is not null && ReferenceEquals(entryProcess, current) && (!entryReachedGame || restartRequested);
+        int currentPid = current.Id;
+        var text = new StringBuilder(512);
         host.EnumWindows((handle, _) => {
             if (result is not null) return;
-            StringBuilder text = new(512); host.GetClassName(handle, text, text.Capacity); string name = text.ToString();
-            if (!(name == "GLFW30" || name == "SDL_app" || name == "LWJGL" || name == "SunAwtFrame")) return;
-            if (name == "SDL_app" && !host.IsWindowVisible(handle)) return;
-            text = new StringBuilder(512); host.GetWindowText(handle, text, text.Capacity); string title = text.ToString();
-            if (string.IsNullOrWhiteSpace(title) || title == "SDL_app" || title == "PopupMessageWindow" || title.StartsWithF("GLFW") || title.EndsWithF("Hidden Utility Window")) return;
-            int processId = host.GetWindowProcessId(handle);
-            if (processId == owner.CoreGameProcess.Id && !owner.CoreGameProcess.HasExited) {
-                result = (handle, title, name, null);
+            int windowPid = host.GetWindowProcessId(handle);
+            bool own = windowPid == currentPid;
+            if ((!own && !mayFollow) || !host.IsWindowVisible(handle)) return;
+
+            text.Clear();
+            if (host.GetClassName(handle, text, text.Capacity) <= 0) return;
+            string name = text.ToString();
+            bool awt = name == "SunAwtFrame";
+            if (name is not ("GLFW30" or "SDL_app" or "LWJGL" or "SunAwtFrame") || (awt && !own)) return;
+            text.Clear();
+            if (host.GetWindowText(handle, text, text.Capacity) <= 0) return;
+            string title = text.ToString();
+            if (string.IsNullOrWhiteSpace(title) || title == "SDL_app" || title == "PopupMessageWindow" ||
+                title.StartsWithF("GLFW") || title.EndsWithF("Hidden Utility Window")) return;
+            // A loader splash or a relay console is not a game window. Keep scanning past it.
+            if (title.StartsWithF("FML") || title.StartsWithF("Quilt Loader")) {
+                if (own && !reportedLoaderWindow) {
+                    reportedLoaderWindow = true;
+                    WatcherLog("Mod Loader 窗口已加载：" + title + "（" + handle.ToInt64() + "）");
+                }
                 return;
             }
-            // Follow only a proven JVM in this launch. A relay's Swing console
-            // is an AWT window and does not mean Minecraft has started.
-            if (legacyJavaGroup is null || !ReferenceEquals(entryProcess, owner.CoreGameProcess) ||
-                entryReachedGame && !restartRequested || name == "SunAwtFrame" || !host.IsWindowVisible(handle)) return;
-            if (legacyJavaGroup.OpenJava(processId) is { } successor) result = (handle, title, name, successor);
+            // Old Minecraft uses AWT; unknown Java tool windows keep the log-based readiness path.
+            if (awt && (!title.StartsWith("Minecraft", StringComparison.OrdinalIgnoreCase) ||
+                title.ContainsIgnoreCase("console") || title.ContainsIgnoreCase("launcher"))) return;
+            if (own) {
+                if (!current.HasExited) result = (handle, title, null);
+                return;
+            }
+            if (legacyJavaGroup?.OpenJava(windowPid) is { } successor) result = (handle, title, successor);
         }, 0);
         return result;
     }

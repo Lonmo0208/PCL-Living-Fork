@@ -23,7 +23,7 @@ public partial class PageResource {
     internal void UseFavorites(ResourceFavoriteStore store, Action reload) {
         if (IsLoaded) throw new InvalidOperationException("收藏数据源必须在页面加载前设置。");
         FavoriteStore = store; FavoriteReload = reload;
-        FavoriteStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(15) };
+        FavoriteStatus = new TextBlock { Name = "FavoriteStatus", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(15) };
         FavoriteStatus.SetResourceReference(TextBlock.ForegroundProperty, "ColorBrushGray3");
         BtnSearchInstallModPack.Visibility = Visibility.Collapsed;
         TextSearchVersion.ToolTip = "按已缓存的项目兼容信息筛选；未知信息不匹配，具体文件以详情为准。";
@@ -124,5 +124,6 @@ public partial class PageResource {
         LabPage.Text = (Page + 1).ToString(CultureInfo.InvariantCulture);
         BtnPageFirst.IsEnabled = BtnPageLeft.IsEnabled = Page > 0; BtnPageFirst.Opacity = BtnPageLeft.Opacity = Page > 0 ? 1 : 0.2;
         BtnPageRight.IsEnabled = Page + 1 < pages; BtnPageRight.Opacity = BtnPageRight.IsEnabled ? 1 : 0.2;
+        NotifyResultsChanged();
     }
 }

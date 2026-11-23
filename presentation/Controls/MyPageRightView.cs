@@ -28,6 +28,7 @@ public class MyPageRightView : AdornerDecorator {
     public void InitializeLoader(PageLoaderBinding binding, FrameworkElement loadingPanel, FrameworkElement contentPanel, FrameworkElement? alwaysPanel, bool autoRun = true) {
         panLoader = loadingPanel; panContent = contentPanel; panAlways = alwaysPanel; loader = binding; this.autoRun = autoRun;
         if (binding.Finished is not null) binding.ConnectPreviewFinish(() => {
+            if (UsesProjectedLoader) { UiWait(binding.Finished); return; }
             while (NativePageState is PageStates.PageExit or PageStates.ContentExit) Thread.Sleep(10);
             UiWait(binding.Finished); Thread.Sleep(20);
         });
@@ -44,17 +45,30 @@ public class MyPageRightView : AdornerDecorator {
         else { if (input is null && loader.InputInvoke is not null) input = loader.InputInvoke(); loader.Start(input, isForceRestart); }
     }
     public event Action? PageEnter, PageExit;
+    public event Action? PageEntering, PageLeaving;
     protected virtual void OnPageEnter() => PageEnter?.Invoke();
     protected virtual void OnPageExit() => PageExit?.Invoke();
+    protected virtual bool UseProjectedNavigation => false;
+    private bool UsesProjectedLoader => loader?.ProjectContent == true && UseProjectedNavigation;
     private FrameworkElement? ContentElement => (FrameworkElement?)(panContent ?? Child);
     private bool LoaderAllowsContent => loader is null || loader.ReadState() == PageLoaderState.Finished || loader.ReadState() == PageLoaderState.Waiting || loader.ReadState() == PageLoaderState.Canceled;
+    private void ShowProjectedLoaderContent() {
+        // A projected resource page animates the visible panels as soon as the loader changes state.
+        // The hidden source only supplies the current panel state and completed rows.
+        bool showContent = LoaderAllowsContent;
+        NativePageState = showContent ? PageStates.ContentStay : PageStates.LoaderStay;
+        if (panAlways is not null) panAlways.Visibility = Visibility.Visible;
+        panContent!.Visibility = showContent ? Visibility.Visible : Visibility.Collapsed;
+        panLoader!.Visibility = showContent ? Visibility.Collapsed : Visibility.Visible;
+    }
     public void PageOnEnter() {
-        MeloongCore.Logger.Trace("已触发 PageOnEnter"); OnPageEnter();
+        MeloongCore.Logger.Trace("已触发 PageOnEnter"); PageEntering?.Invoke(); OnPageEnter();
+        if (UsesProjectedLoader) { ShowProjectedLoaderContent(); return; }
         switch (NativePageState) {
             case PageStates.Empty:
-                if (LoaderAllowsContent) { NativePageState = PageStates.ContentEnter; TriggerEnterAnimation(panAlways, ContentElement); }
+                if (LoaderAllowsContent) { NativePageState = PageStates.ContentEnter; ShowEnteringPage(panAlways, ContentElement); }
                 else if (loader!.ReadState() == PageLoaderState.Loading) { NativePageState = PageStates.LoaderWait; Animations.Start(Animations.Code(PageOnLoaderWaitFinished, 400), "PageRight PageChange " + PageUuid); }
-                else { NativePageState = PageStates.LoaderEnter; TriggerEnterAnimation(panAlways, panLoader); }
+                else { NativePageState = PageStates.LoaderEnter; ShowEnteringPage(panAlways, panLoader); }
                 break;
             case PageStates.ContentExit:
                 if (LoaderAllowsContent) { NativePageState = PageStates.ContentEnter; TriggerEnterAnimation(ContentElement); }
@@ -66,7 +80,14 @@ public class MyPageRightView : AdornerDecorator {
         }
     }
     public void PageOnExit() {
-        MeloongCore.Logger.Trace("已触发 PageOnExit"); OnPageExit();
+        MeloongCore.Logger.Trace("已触发 PageOnExit"); PageLeaving?.Invoke(); OnPageExit();
+        if (UsesProjectedLoader) {
+            NativePageState = PageStates.Empty;
+            panContent!.Visibility = Visibility.Collapsed;
+            panLoader!.Visibility = Visibility.Collapsed;
+            if (panAlways is not null) panAlways.Visibility = Visibility.Collapsed;
+            return;
+        }
         switch (NativePageState) {
             case PageStates.ContentEnter: case PageStates.ContentStay: NativePageState = PageStates.PageExit; TriggerExitAnimation(panAlways, ContentElement); break;
             case PageStates.LoaderEnter: case PageStates.LoaderStayForce: case PageStates.LoaderStay: NativePageState = PageStates.PageExit; TriggerExitAnimation(panAlways, panLoader); break;
@@ -76,7 +97,8 @@ public class MyPageRightView : AdornerDecorator {
         }
     }
     public void PageOnForceExit() {
-        if (NativePageState == PageStates.Empty) return; MeloongCore.Logger.Trace("已触发 PageOnForceExit"); NativePageState = PageStates.Empty; Animations.Stop("PageRight PageChange " + PageUuid);
+        if (NativePageState == PageStates.Empty) return;
+        MeloongCore.Logger.Trace("已触发 PageOnForceExit"); PageLeaving?.Invoke(); NativePageState = PageStates.Empty; Animations.Stop("PageRight PageChange " + PageUuid);
         if (loader is null) Child!.Visibility = Visibility.Collapsed;
         else { panContent!.Visibility = Visibility.Collapsed; panLoader!.Visibility = Visibility.Collapsed; if (panAlways is not null) panAlways.Visibility = Visibility.Collapsed; }
     }
@@ -121,6 +143,10 @@ public class MyPageRightView : AdornerDecorator {
         else NativePageState = PageStates.LoaderStay;
     }
     private void LoaderStateChanged(PageLoaderState next, PageLoaderState old) {
+        if (UsesProjectedLoader) {
+            if (NativePageState != PageStates.Empty) ShowProjectedLoaderContent();
+            return;
+        }
         switch (next) {
             case PageLoaderState.Failed: case PageLoaderState.Loading:
                 if (old is PageLoaderState.Failed or PageLoaderState.Loading) return; MeloongCore.Logger.Trace("已触发 PageLoaderState (Start/Refresh)");
@@ -134,6 +160,22 @@ public class MyPageRightView : AdornerDecorator {
                 break;
         }
     }
+    private void ShowEnteringPage(params FrameworkElement?[] elements) {
+        if (!UseProjectedNavigation) { TriggerEnterAnimation(elements); return; }
+        // The projected page applies the navigation transition. The source settles its visibility and loader state
+        // without scheduling a second entrance on the controls it supplies to that projection.
+        foreach (FrameworkElement element in elements.OfType<FrameworkElement>()) {
+            element.Visibility = Visibility.Visible;
+            foreach (FrameworkElement control in GetAllAnimControls(element, true)) {
+                control.IsHitTestVisible = true;
+                if (control.RenderTransform is TranslateTransform) control.RenderTransform = null!;
+                if (control is MyExtraTextButtonView extra) extra.Show = true;
+                else control.Opacity = 1;
+            }
+        }
+        PageOnEnterAnimationFinished();
+    }
+
     public void TriggerEnterAnimation(params FrameworkElement?[] elements) {
         var real = elements.Where(element => element is not null).Select(element => element!);
         foreach (FrameworkElement element in real) element.Visibility = Visibility.Visible;

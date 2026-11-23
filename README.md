@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Plain Craft Launcher 2/Images/Branding/LivingPCL-256.png" alt="PCL Living Fork" width="90" height="90">
+<a href="https://github.com/DDZmumo/PCL-Living-Fork/releases/tag/v1.5.1"><img src="Plain Craft Launcher 2/Images/Branding/LivingPCL-256.png" alt="PCL Living Fork 正式版图标" width="90" height="90"></a>&nbsp;&nbsp;<a href="https://github.com/DDZmumo/PCL-Living-Fork/releases/tag/v1.6.0-pre-3"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/pcllf-preview-dark.svg"><img src="modern/Main/Images/Branding/PCLLF.svg" alt="PCL Living Fork 新版 WPF 图标" width="90" height="90"></picture></a>
 
 # PCL Living Fork
 
@@ -13,15 +13,15 @@
 [![QQ 交流群](https://img.shields.io/badge/QQ%20%E4%BA%A4%E6%B5%81%E7%BE%A4-%E7%82%B9%E5%87%BB%E5%8A%A0%E5%85%A5-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/MX1RivlHeE)
 
 [下载 1.5.1 正式版](https://github.com/DDZmumo/PCL-Living-Fork/releases/tag/v1.5.1) ·
+[下载 1.6.0-pre-3 预发布版](https://github.com/DDZmumo/PCL-Living-Fork/releases/tag/v1.6.0-pre-3) ·
 [CNB 国内镜像](https://cnb.cool/ddzmumo/PCL-Living-Fork/-/releases) ·
-[更新说明](https://github.com/DDZmumo/PCL-Living-Fork/releases/tag/v1.5.1) ·
 [历史版本](https://github.com/DDZmumo/PCL-Living-Fork/releases) ·
 [问题反馈](https://github.com/DDZmumo/PCL-Living-Fork/issues) ·
 [加入 QQ 群](https://qm.qq.com/q/MX1RivlHeE)
 
 </div>
 
-当前正式版为 **1.5.1**，可从上方 GitHub 或 CNB 镜像下载。
+**1.5.1** 为当前正式版。**1.6.0-pre-3** 提供新版 WPF 工作台和皮肤库，更新说明见对应的 GitHub Release。
 
 ---
 
@@ -41,8 +41,8 @@
 | --- | --- | --- | --- |
 | **主体语言** | `VB.NET` 主程序 + 少量 C# 库 | 全量 `C#`（旧 VB 源码已退役归档） | 全量 `C#` |
 | **目标运行时** | `.NET Framework 4.8` | `.NET 10`（含 `net48 → .NET 10` 自动升级桥） | `.NET 10` |
-| **界面与交互** | WPF 自有控件与动效，逻辑集中于页面后台 | WPF，保留原生动效手感，内置深浅色实时切换、昼夜背景与独立透明度 | WPF，部分页面引入 MVVM（`ViewModel`）与界面服务抽象 |
-| **核心工程结构** | 主程序、`PCLCS`、`MeloongCore` | `Main`、`PCLCS`（业务引擎/控制器）、`Presentation`（控件/动效表现层）、`MeloongCore.Shared` | 主程序、`PCL.Launcher.Core`、`PCL.Core.Wpf`、`PCL.Core` |
+| **界面与交互** | WPF 自有控件与动效，逻辑集中于页面后台 | 新版 WPF 工作台采用独立侧栏、磨砂卡片和弹簧过渡，支持深浅色切换与自定义图片或视频壁纸 | WPF，部分页面引入 MVVM（`ViewModel`）与界面服务抽象 |
+| **核心工程结构** | 主程序、`PCLCS`、`MeloongCore` | `Main`、`Core`（无 WPF 的业务库）、`WPF.Core`（Windows/WPF 适配）、`Presentation`（控件/动效表现层）、`MeloongCore.Shared` | 主程序、`PCL.Launcher.Core`、`PCL.Core.Wpf`、`PCL.Core` |
 | **配置与数据契约** | `Setup.ini` 与注册表存储 | 完整兼容原有 `Setup.ini` 与游戏目录；微软登录使用 `_LF` 独立注册表键隔离 | 自建 IoC 生命周期、`JSON / YAML` 配置服务与独立 Profile 模型 |
 | **演进方向与重心** | 官方主线基线与快照功能 | **严守数据/交互兼容 + 整合包更新、依赖图谱、还原点、备份与个人习惯闭环** | 通用基础设施抽离、核心与 UI 严格解耦及社区化扩展 |
 
@@ -51,8 +51,14 @@
 
 ## 功能亮点
 
+### 新版 WPF 工作台（1.6.0-pre-3）
+
+- 首页集中显示当前实例、启动和实例管理入口。资源中心、账号与任务页沿用统一的导航与控件。
+- 外置登录按服务器选择账号和角色。皮肤库可管理离线角色的皮肤和披风。
+- 默认使用深色主题，可从右上角切换浅色。壁纸可在“设置 → 个性化”中直接选择图片或视频文件。
+
 ### 游戏资源与模组管理
-- **全局资源收藏**：顶栏收藏区沿用下载区的搜索、分类与列表界面，收藏整个在线项目；下载、版本资源管理与收藏页同步状态，同一平台项目的不同文件和版本只保留一条记录。已匹配在线项目的模组、资源包和光影包可直接从本地列表收藏。
+- **全局资源收藏**：收藏页沿用下载区的搜索、分类与列表界面，收藏整个在线项目；下载、版本资源管理与收藏页同步状态，同一平台项目的不同文件和版本只保留一条记录。已匹配在线项目的模组、资源包和光影包可直接从本地列表收藏。
 - **游戏资源管理**：在启动器内直接打理存档、截图、模组、资源包、光影包和投影/原理图，保留 PCL 原生列表、多选与动效；资源包与光影包支持在线更新，CurseForge 地图下载后自动归档至 `saves\PCLLFWorldDownload` 并解压安装，避免覆盖同名存档。
 - **模组版本替换与重复筛选**：主动下载同一模组的其他版本时，按实际 Mod ID 或经过文件摘要验证的平台项目替换已有版本，支持升级与降级；重复副本可分别选择，删除只影响选中的文件。
 - **下载时补全前置**：下载 Mod 前列出必需前置、兼容版本及安装状态，可选择一起安装、仅下载当前 Mod 或取消。可在“设置 → 其他 → 社区资源”关闭下载时的前置检查；启动前依赖检查使用独立开关。
@@ -84,7 +90,7 @@
 
 | 项目 | 说明 |
 | --- | --- |
-| **运行环境** | `1.4.0` 及后续正式版基于 **C# / .NET 10 (Windows x64)** 构建。公开发布仅提供精简版 `EXE`、`ZIP` 与 `SHA256SUMS.txt`（均不含运行时），运行或自动升级前请先安装 [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)。 |
+| **运行环境** | `1.4.0` 及后续版本基于 **C# / .NET 10 (Windows x64)** 构建。GitHub Release 提供框架依赖版 `EXE`、`ZIP` 与 `SHA256SUMS.txt`。运行或自动升级前请先安装 [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)。 |
 | **历史版本** | 旧版 `1.3.4`、`1.3.5-pre-3` 基于 `.NET Framework 4.8` 运行，旧 VB 源码已退役归档；有需要可从 [历史 Releases](https://github.com/DDZmumo/PCL-Living-Fork/releases) 按对应说明下载。 |
 | **更新源与通道** | 国内入口为 [CNB Releases](https://cnb.cool/ddzmumo/PCL-Living-Fork/-/releases)。启动器更新默认使用 CNB 源，可在设置或更新提示中切换为 GitHub 源；默认仅接收正式版，也可开启“正式版 + 预发布版”通道。 |
 | **数据与账号兼容** | 升级时完整保留原有 `PCL`、`.minecraft`、游戏目录及原文件名（兼容旧 `LivingPCL2-Re` 更新入口）。微软登录使用带 `_LF` 后缀的独立注册表键，避免与其他分支互相覆盖令牌；同目录运行时共用 `PCL\Setup.ini`。 |
@@ -117,6 +123,7 @@ dotnet restore .\PCL-Living-Fork.Modern.slnx
 - 源码不包含实际 Client ID 或 API Key，本地可通过环境变量 `PCL_MS_CLIENT_ID`、`PCL_CURSEFORGE_API_KEY` 提供配置，构建时会加密嵌入。
 - 相关工程文档：
   - [现代构建与测试说明](docs/BUILDING_MODERN.md)
+  - [Core 与 WPF 架构边界](docs/ARCHITECTURE.md)
   - [公开发布约定](docs/PUBLISHING.md)
   - [外观与启动器更新通道](docs/theme-and-update-channels.md)
 
@@ -124,6 +131,7 @@ dotnet restore .\PCL-Living-Fork.Modern.slnx
 
 - **原作与上游**：原作作者为 **龙腾猫跃** 及 PCL 原项目贡献者，原作版权归 **成都瓜皮龙科技有限公司** 所有。本项目以 [Plain Craft Launcher (PCL)](https://github.com/Meloong-Git/PCL) `2.14.0.0` 为起点独立演进。
 - **迁移参考与来源**：在完成全量 **C# / .NET 10** 现代化架构迁移与部分兼容实现的过程中，本项目以社区版 [PCL-CE (PCL Community Edition)](https://github.com/PCL-Community/PCL-CE) 作为同源迁移工程示例与结构参考，感谢 **PCL-Community** 及相关贡献者的开源工作。
+- **新版 WPF 皮肤库**参考 PCL Symbio Edition（PCLSE）的实现。来自 PCLSE 并按 **CC BY-NC（署名-非商业性使用）** 提供的内容适用该许可。[PCLSE 上游项目](https://github.com/Hydrogen-Peroxide/PCL-Symbio-Edition)
 - **许可与署名**：本项目完整保留 PCL 原作、PCL-CE 参考实现及各第三方组件的署名、版权声明与对应分发/开源许可。
 
 - [上游 PCL 仓库](https://github.com/Meloong-Git/PCL) · [PCL-CE 仓库](https://github.com/PCL-Community/PCL-CE) · [来源与版权声明](NOTICE.md) · [许可与使用指南](LICENCE) · [爱发电支持原作者](https://meloong.com/afd/a/LTCat)

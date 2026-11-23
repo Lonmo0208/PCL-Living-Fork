@@ -32,9 +32,9 @@ public sealed partial class LegacyMainWindowController<TStack, TInstance, TAnima
             TriggerPageBack();
         }
         if (args.Key == Key.F11 && IsPage(PageCurrent, LegacyMainPage.InstanceSelect)) { host.WriteHiddenVersions(!host.HiddenVersions()); host.ReloadInstanceList(true); return; }
-        if (args.Key == Key.F12) { host.WriteHiddenForceShow(!host.HiddenForceShow()); Hint(host.HiddenForceShow() ? "功能隐藏设置已暂时关闭！" : "功能隐藏设置已重新开启！", LegacyMainHint.Green); host.RefreshHidden(); return; }
+        if (args.Key == Key.F12 && view.UsesGlassShell?.Invoke() != true) { host.WriteHiddenForceShow(!host.HiddenForceShow()); Hint(host.HiddenForceShow() ? "功能隐藏设置已暂时关闭！" : "功能隐藏设置已重新开启！", LegacyMainHint.Green); host.RefreshHidden(); return; }
         if (args.Key == Key.F5) { if (host.CanRefresh(PageLeft)) host.Refresh(PageLeft); if (host.CanRefresh(PageRight)) host.Refresh(PageRight); return; }
-        if (args.Key == Key.Enter && IsPage(PageCurrent, LegacyMainPage.Launch)) { if (host.AprilEnabled() && !host.AprilGivenUp()) Hint("木大！"); else host.LaunchButton(); }
+        if (args.Key == Key.Enter && IsPage(PageCurrent, LegacyMainPage.Launch) && view.SuppressesLaunchKey?.Invoke() != true) { if (host.AprilEnabled() && !host.AprilGivenUp()) Hint("木大！"); else host.LaunchButton(); }
     }
     public void MouseDown(MouseButtonEventArgs args) {
         if (host.GlobalMessageCount() > 0 || host.WaitingMessages()) return;
@@ -77,6 +77,7 @@ public sealed partial class LegacyMainWindowController<TStack, TInstance, TAnima
                     string text = Conversions.ToString(args.Data.GetData(DataFormats.Text))!; Logger.Info($"接受文本拖拽：{text}");
                     if (text.StartsWithF("authlib-injector:yggdrasil-server:")) {
                         args.Handled = true; args.Effects = DragDropEffects.Copy;
+                        if (host.UsesGlobalAccounts) { Hint("请在账号页的外置登录中添加验证服务器。", LegacyMainHint.Red); return; }
                         string server = StringUtils.FormUrlUnescape(text.Substring("authlib-injector:yggdrasil-server:".Length)); Logger.Info($"Authlib 拖拽：{server}");
                         if (!string.IsNullOrEmpty(host.ValidateHttp(server))) { Hint($"输入的 Authlib 验证服务器不符合网址格式（{server}）！", LegacyMainHint.Red); return; }
                         TInstance? target = IsPage(PageCurrent, LegacyMainPage.InstanceSetup) ? host.SettingsInstance() : host.SelectedInstance();
