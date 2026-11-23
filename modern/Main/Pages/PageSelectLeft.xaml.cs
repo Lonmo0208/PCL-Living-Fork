@@ -193,7 +193,32 @@ namespace PCL
 
         private static global::System.Windows.FrameworkElement NativeMenuRow(global::System.Object Sender)
         {
-            return ((global::PCL.MyListItem)(((global::System.Windows.Controls.Primitives.Popup)(((global::System.Windows.Controls.ContextMenu)(((dynamic)Sender).Parent)).Parent)).PlacementTarget));
+            // 玻璃菜单会把原菜单项投影到自己的弹出层里，再以原菜单项为源触发 Click；原菜单从未被
+            // 放进原生 Popup，所以 项 -> ContextMenu -> Popup -> PlacementTarget 这条链在玻璃菜单
+            // 下是空的（点击“刷新”等会空引用）。投影菜单在触发 Click 期间会给出所属的列表行。
+            if (global::PCL.GlassActionMenu.ActivePlacementTarget is global::System.Windows.FrameworkElement GlassRow)
+            {
+                return GlassRow;
+            }
+
+            if (Sender is global::System.Windows.Controls.MenuItem Item)
+            {
+                if (Item.Parent is global::System.Windows.Controls.ContextMenu Menu)
+                {
+                    if (Menu.Parent is global::System.Windows.Controls.Primitives.Popup Popup &&
+                        Popup.PlacementTarget is global::System.Windows.FrameworkElement NativeRow)
+                    {
+                        return NativeRow;
+                    }
+
+                    if (Menu.PlacementTarget is global::System.Windows.FrameworkElement MenuRow)
+                    {
+                        return MenuRow;
+                    }
+                }
+            }
+
+            throw new global::System.InvalidOperationException("无法从菜单项定位所属的列表行。");
         }
 
         private static void CheckNativeRow(global::System.Windows.FrameworkElement Row, global::System.Boolean Checked, global::System.Boolean Silent)

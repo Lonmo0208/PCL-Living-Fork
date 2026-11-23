@@ -22,6 +22,10 @@ internal sealed class GlassActionMenu : ContextMenu {
     private ContextMenu? _original;
     private bool? _contrastMode;
     internal Func<bool>? CanActivateOwner { get; set; }
+    // The original menu is never hosted in a native Popup while only this projection is shown, so
+    // handlers that resolve their row through Sender.Parent -> ContextMenu -> Popup find nothing.
+    // Expose the projected menu's placement target for the duration of the original Click raise.
+    internal static FrameworkElement? ActivePlacementTarget { get; private set; }
     private bool OwnerIsLive() => CanActivateOwner?.Invoke() != false;
     internal GlassActionMenu(FrameworkElement placementTarget, bool useDarkText, bool reduceMotion = false) {
         PlacementTarget = placementTarget ?? throw new ArgumentNullException(nameof(placementTarget));
@@ -59,6 +63,9 @@ internal sealed class GlassActionMenu : ContextMenu {
 
     internal static GlassActionMenu FromContextMenu(ContextMenu original, FrameworkElement placementTarget, bool useDarkText, bool reduceMotion = false) {
         ArgumentNullException.ThrowIfNull(original);
+        // The original menu is not opened natively here, so keep the target it stands for: the
+        // legacy menu handlers and the three-argument overload read it back from the menu.
+        original.PlacementTarget = placementTarget;
         var menu = new GlassActionMenu(placementTarget, useDarkText, reduceMotion) { _original = original };
         menu.ProjectItems(); return menu;
     }
@@ -105,7 +112,13 @@ internal sealed class GlassActionMenu : ContextMenu {
         result.SetBinding(MenuItem.CommandTargetProperty, new Binding(nameof(MenuItem.CommandTarget)) { Source = source, Converter = new OriginalCommandTarget(source) });
         result.Click += (_, args) => {
             if (!OwnerIsLive() || !ReferenceEquals(args.OriginalSource, result) || !source.IsEnabled) return;
-            source.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, source));
+            FrameworkElement? previous = ActivePlacementTarget;
+            ActivePlacementTarget = PlacementTarget as FrameworkElement;
+            try {
+                source.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, source));
+            } finally {
+                ActivePlacementTarget = previous;
+            }
             // Native MenuItem invokes its bound original command exactly once after Click.
         };
         foreach (object child in source.Items) {

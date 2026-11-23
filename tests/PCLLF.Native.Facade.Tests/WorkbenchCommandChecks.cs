@@ -63,10 +63,17 @@ internal static class WorkbenchCommandChecks {
 
             int clicks = 0, commands = 0, opened = 0, closed = 0;
             var menuTrace = new List<string>();
+            FrameworkElement? resolvedRow = null;
             var original = new ContextMenu(); original.Opened += (_, _) => { opened++; menuTrace.Add("source-open"); }; original.Closed += (_, _) => { closed++; menuTrace.Add("source-close"); };
             var originalItem = new MenuItem { Header = new TextBlock { Text = "原操作" }, IsCheckable = true, CommandParameter = "owned-command-argument",
                 Command = new TestCommand(parameter => { Native.Check(Equals(parameter, "owned-command-argument"), "Menu command parameter changed."); commands++; menuTrace.Add("command"); }) };
-            originalItem.Click += (_, _) => { clicks++; menuTrace.Add("source-click"); }; original.Items.Add(originalItem);
+            originalItem.Click += (_, _) => {
+                clicks++; menuTrace.Add("source-click");
+                // The list page resolves the row of a clicked menu item; a projected glass menu has
+                // no native Popup, so this used to throw a NullReferenceException.
+                resolvedRow = (FrameworkElement?)Native.Static("PCL.PageSelectLeft", "NativeMenuRow", originalItem);
+            };
+            original.Items.Add(originalItem);
             var submenu = new MenuItem { Header = "子操作" }; submenu.Items.Add(new MenuItem { Header = "嵌套操作" }); original.Items.Add(submenu);
             Type menuType = Native.Type("PCL.GlassActionMenu");
             MethodInfo project = menuType.GetMethod("FromContextMenu", Native.Flags, null, [typeof(ContextMenu), typeof(FrameworkElement), typeof(bool), typeof(bool)], null)!;
@@ -89,6 +96,8 @@ internal static class WorkbenchCommandChecks {
             VisualAssetChecks.Drain();
             Native.Check(clicks == 1 && commands == 1 && opened == 1 && closed == 1 && originalItem.IsChecked,
                 "New menu lost original Click/command/checked/Open/Closed semantics: " + clicks + "/" + commands + "/" + opened + "/" + closed + "; checked=" + originalItem.IsChecked + "; trace=" + string.Join(",", menuTrace));
+            Native.Check(ReferenceEquals(resolvedRow, button),
+                "A projected menu click could not resolve the row that opened it (native Popup chain assumption).");
             Native.Property(menuType, "CanActivateOwner").SetValue(menu, new Func<bool>(() => false));
             typeof(MenuItem).GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(item, null);
             Native.Check(!item.Command!.CanExecute(item.CommandParameter), "Inactive owner left its projected command executable.");
