@@ -62,7 +62,7 @@ internal static class GlassContextNavigation
                     IsEnabled = list.IsEnabled,
                     Invoked = () => { if (list.IsEnabled && list.Visibility == Visibility.Visible) list.PerformClick(); },
                     Actions = RowActions(list),
-                    ContextRequested = list.ContextMenu is { } menu ? target => ShowContextMenu(menu, target) : null,
+                    ContextRequested = list.ContextMenu is { } menu ? target => ShowContextMenu(menu, target, list) : null,
                     Source = list,
                 });
             }
@@ -119,10 +119,10 @@ internal static class GlassContextNavigation
         return actions;
     }
 
-    private static void ShowContextMenu(ContextMenu source, FrameworkElement target)
+    private static void ShowContextMenu(ContextMenu source, FrameworkElement target, FrameworkElement? actionTarget = null)
     {
         bool darkText = target.TryFindResource("GlassTextBrush") is SolidColorBrush { Color: var color } && color.R + color.G + color.B < 480;
-        GlassActionMenu.FromContextMenu(source, target, darkText).IsOpen = true;
+        GlassActionMenu.FromContextMenu(source, target, darkText, false, actionTarget).IsOpen = true;
     }
 
     private static void ReadIcon(FrameworkElement logo, out string geometry, out ImageSource image)

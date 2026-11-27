@@ -26,6 +26,9 @@ internal sealed class GlassActionMenu : ContextMenu {
     // handlers that resolve their row through Sender.Parent -> ContextMenu -> Popup find nothing.
     // Expose the projected menu's placement target for the duration of the original Click raise.
     internal static FrameworkElement? ActivePlacementTarget { get; private set; }
+    // A glass sidebar row is a rebuilt Button, so its PlacementTarget is that Button - the original
+    // row it stands for is carried separately and is what the legacy handlers need.
+    internal FrameworkElement? ActionTarget { get; private set; }
     private bool OwnerIsLive() => CanActivateOwner?.Invoke() != false;
     internal GlassActionMenu(FrameworkElement placementTarget, bool useDarkText, bool reduceMotion = false) {
         PlacementTarget = placementTarget ?? throw new ArgumentNullException(nameof(placementTarget));
@@ -61,12 +64,12 @@ internal sealed class GlassActionMenu : ContextMenu {
     internal void AddSeparator() => Items.Add(new Separator());
     internal void Show() { if (PlacementTarget is FrameworkElement target) GlassCommandChrome.CopyMaterial(target, this); IsOpen = true; }
 
-    internal static GlassActionMenu FromContextMenu(ContextMenu original, FrameworkElement placementTarget, bool useDarkText, bool reduceMotion = false) {
+    internal static GlassActionMenu FromContextMenu(ContextMenu original, FrameworkElement placementTarget, bool useDarkText, bool reduceMotion = false, FrameworkElement? actionTarget = null) {
         ArgumentNullException.ThrowIfNull(original);
         // The original menu is not opened natively here, so keep the target it stands for: the
         // legacy menu handlers and the three-argument overload read it back from the menu.
         original.PlacementTarget = placementTarget;
-        var menu = new GlassActionMenu(placementTarget, useDarkText, reduceMotion) { _original = original };
+        var menu = new GlassActionMenu(placementTarget, useDarkText, reduceMotion) { _original = original, ActionTarget = actionTarget };
         menu.ProjectItems(); return menu;
     }
     internal static GlassActionMenu FromContextMenu(ContextMenu original, bool useDarkText, bool reduceMotion = false) =>
@@ -113,7 +116,8 @@ internal sealed class GlassActionMenu : ContextMenu {
         result.Click += (_, args) => {
             if (!OwnerIsLive() || !ReferenceEquals(args.OriginalSource, result) || !source.IsEnabled) return;
             FrameworkElement? previous = ActivePlacementTarget;
-            ActivePlacementTarget = PlacementTarget as FrameworkElement;
+            // A rebuilt glass row is only the visual anchor; the original row is what handlers read.
+            ActivePlacementTarget = ActionTarget ?? PlacementTarget as FrameworkElement;
             try {
                 source.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, source));
             } finally {

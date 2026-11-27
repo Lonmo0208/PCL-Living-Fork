@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 using System.Reflection;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace PCLLF.Native.Facade.Tests;
 
@@ -53,6 +54,27 @@ internal static class SelectionMenuGuardChecks {
         Native.Field(hostType, "MenuRow").SetValue(host, new Func<object, FrameworkElement>(_ => null!));
         Native.Method(controller, "RefreshClick").Invoke(null, new object?[] { new object(), host });
 
-        Console.WriteLine("PASS selection menu guards: folder actions ignore rows without a folder (Tag null/foreign type/absent row) instead of a NullReferenceException.");
+        // 玻璃侧栏的行是重建的 Button：投影菜单必须用原始行（ActionTarget）定位动作，而不是按钮。
+        object folderInstance = Activator.CreateInstance(folder)!;
+        Native.Field(folder, "Name").SetValue(folderInstance, "awa8-21");
+        Native.Field(folder, "Location").SetValue(folderInstance, "E:\\awa8-21\\.minecraft\\");
+        var originalMenu = new ContextMenu();
+        var refreshItem = new MenuItem { Header = "刷新" };
+        object? resolved = null;
+        refreshItem.Click += (sender, _) => resolved = Native.Static("PCL.PageSelectLeft", "NativeMenuRow", sender);
+        originalMenu.Items.Add(refreshItem);
+        var originalRow = new PCL.MyListItem { Tag = folderInstance };
+        var glassButton = new Button();
+        Type menuType = Native.Type("PCL.GlassActionMenu");
+        MethodInfo fromMenu = menuType.GetMethod("FromContextMenu", Native.Flags, null,
+            new[] { typeof(ContextMenu), typeof(FrameworkElement), typeof(bool), typeof(bool), typeof(FrameworkElement) }, null)!;
+        var projected = (ContextMenu)fromMenu.Invoke(null,
+            new object?[] { originalMenu, glassButton, false, false, originalRow })!;
+        var projectedItem = (MenuItem)projected.Items[0];
+        projectedItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, projectedItem));
+        Native.Check(resolved is PCL.MyListItem fromGlass && ReferenceEquals(fromGlass.Tag, folderInstance),
+            "A projected glass row did not resolve back to its original row for menu actions.");
+
+        Console.WriteLine("PASS selection menu guards: folder actions ignore rows without a folder (Tag null/foreign type/absent row) instead of a NullReferenceException, and a projected glass row resolves to its original row.");
     }
 }
