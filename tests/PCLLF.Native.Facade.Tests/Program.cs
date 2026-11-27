@@ -21,6 +21,7 @@ internal static class Program
         ["glass-modal-lifecycle"] = GlassModalLifecycleChecks.Run,
         ["workbench-commands"] = WorkbenchCommandChecks.Run,
         ["instance-delete"] = InstanceDeletionChecks.Run,
+        ["selection-menu-guards"] = _ => SelectionMenuGuardChecks.Run(),
         ["launcher-update-page"] = LauncherUpdatePageChecks.Run,
         ["title-theme-toggle"] = TitleThemeToggleChecks.Run,
         ["theme-transition"] = ThemeTransitionChecks.Run,

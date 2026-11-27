@@ -177,7 +177,10 @@ public sealed partial class FolderSelectionPageController<TFolder, TKind, TInsta
     public static void Delete(object sender, FolderSelectionPageHost<TFolder, TInstance> host) {
         if (host.ModpackEnabled()) return;
         if (host.AnyLocked() || host.Downloading(false)) { host.Hint("请在其他任务完成后，再删除游戏文件夹！", SelectionPageHint.Red); return; }
-        TFolder target = (TFolder)host.MenuRow(sender).Tag;
+        // 玻璃菜单投影后，菜单项所属的行不一定是文件夹行（实例行、占位行的 Tag 为空）；
+        // Tag 不是文件夹时直接忽略，不要强转后访问 Location。
+        TFolder? target = host.MenuRow(sender)?.Tag as TFolder;
+        if (target?.Location is null) return;
         try { MmcInstanceCapabilities.RequireLegacyGameFolder(target.Location,"删除或清空游戏文件夹"); }
         catch (Exception error) { host.Hint(error.Message,SelectionPageHint.Red); return; }
         string text = (Kind(target) == 0 || Kind(target) == 1) && Same(target.Location, host.BaseFolder() + ".minecraft\\") && host.Folders().IsSingle() ? "清空" : "删除";
@@ -195,11 +198,19 @@ public sealed partial class FolderSelectionPageController<TFolder, TKind, TInsta
         foreach (string folder in folders.ToList()) { if (!folder.Contains(">") || !PathUtils.IsSame(folder.AfterFirst(">"), target.Location)) continue; deleted = folder.BeforeFirst(">"); folders.Remove(folder); break; }
         host.WriteFolders(string.Join("|", folders)); return deleted;
     }
-    public static void Open(object sender, FolderSelectionPageHost<TFolder, TInstance> host) => host.OpenExplorer(host.RowInfo(host.MenuRow(sender)));
-    public static void RefreshClick(object sender, FolderSelectionPageHost<TFolder, TInstance> host) { TFolder data = (TFolder)host.MenuRow(sender).Tag; Refresh(data.Location, host); }
+    public static void Open(object sender, FolderSelectionPageHost<TFolder, TInstance> host) {
+        if (host.MenuRow(sender) is not { } row || row.Tag is not TFolder) return;
+        host.OpenExplorer(host.RowInfo(row));
+    }
+    public static void RefreshClick(object sender, FolderSelectionPageHost<TFolder, TInstance> host) {
+        // 玻璃菜单投影后，菜单项所属的行不一定是文件夹行（实例行、占位行的 Tag 为空）；
+        // Tag 不是文件夹时直接忽略，而不是在强转后访问 Location 时空引用。
+        if (host.MenuRow(sender)?.Tag is not TFolder data || data.Location is null) return;
+        Refresh(data.Location, host);
+    }
     public static void Refresh(string folder, FolderSelectionPageHost<TFolder, TInstance> host) { host.WriteIni(folder + "PCL.ini", "InstanceCache", ""); if (PathUtils.IsSame(folder, host.SelectedFolder())) host.RefreshInstances(true); }
     public static void Rename(object sender, FolderSelectionPageHost<TFolder, TInstance> host) {
-        if (host.ModpackEnabled()) return; TFolder folder = (TFolder)host.MenuRow(sender).Tag;
+        if (host.ModpackEnabled()) return; if (host.MenuRow(sender)?.Tag is not TFolder folder) return;
         try {
             string? name = host.Input(new SelectionPageInput { Title = "输入新名称", Default = folder.Name! }); if (string.IsNullOrWhiteSpace(name)) return;
             List<string> folders = new(host.ReadFolders().Split('|')); bool added = false;
